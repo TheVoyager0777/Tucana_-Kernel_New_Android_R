@@ -27,7 +27,8 @@ make -j$(nproc --all) \
 	CC="${ccache_} ${CLANG_PATH}/bin/clang" \
 	CLANG_TRIPLE=/home/user/fc/aarch64-linux-gnu- \
 	CROSS_COMPILE=/home/user/fc/bin/aarch64-linux-gnu- \
-	CROSS_COMPILE_ARM32=/home/user/fc/bin/arm-linux-gnueabi- || > ./build.log
+	CROSS_COMPILE_ARM32=/home/user/fc/bin/arm-linux-gnueabi- \
+	CROSS_COMPILE_COMPAT=/home/user/fc/bin/arm-linux-gnueabi- || > ./build.log
 
 exit_code=$?
 End=$(date +"%s")
