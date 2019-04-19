@@ -1574,6 +1574,8 @@ config MACH_XIAOMI_RAPHAEL
 
 endmenu
 
+endmenu
+
 config HWCONF_MANAGER
        bool "Hardware configuration and monitor information"
        default y
