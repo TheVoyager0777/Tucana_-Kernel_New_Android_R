@@ -1,6 +1,13 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #ifndef __FG_ALG_H__
@@ -88,7 +95,6 @@ enum ttf_param {
 	TTF_CHG_TYPE,
 	TTF_CHG_STATUS,
 	TTF_TTE_VALID,
-	TTF_CHG_DONE,
 };
 
 struct ttf_circ_buf {
@@ -122,7 +128,6 @@ struct ttf {
 	struct range_data	*step_chg_cfg;
 	bool			step_chg_cfg_valid;
 	bool			ocv_step_chg_cfg_valid;
-	bool			clear_ibatt;
 	int			step_chg_num_params;
 	int			mode;
 	int			last_ttf;

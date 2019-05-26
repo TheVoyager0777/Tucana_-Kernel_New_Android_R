@@ -44,14 +44,12 @@ static const char * const power_supply_type_text[] = {
 	"Unknown", "Battery", "UPS", "Mains", "USB",
 	"USB_DCP", "USB_CDP", "USB_ACA", "USB_C",
 	"USB_PD", "USB_PD_DRP", "BrickID",
-	"USB_HVDCP", "USB_HVDCP_3", "USB_HVDCP_3", "Wireless", "USB_FLOAT",
-	"BMS", "Parallel", "Main", "USB_C_UFP", "USB_C_DFP",
+	"USB_HVDCP", "USB_HVDCP_3", "USB_HVDCP_3P5", "Wireless", "USB_FLOAT",
+	"BMS", "Parallel", "Main", "Wipower", "USB_C_UFP", "USB_C_DFP",
 	"Charge_Pump",
-};
-
-static const char * const power_supply_usb_type_text[] = {
-	"Unknown", "SDP", "DCP", "CDP", "ACA", "C",
-	"PD", "PD_DRP", "PD_PPS", "BrickID"
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	"Batt_Verify",
+#endif
 };
 
 static const char * const power_supply_status_text[] = {
@@ -98,53 +96,18 @@ static const char * const power_supply_typec_src_rp_text[] = {
 	"Rp-Default", "Rp-1.5A", "Rp-3A"
 };
 
-static ssize_t power_supply_show_usb_type(struct device *dev,
-					  enum power_supply_usb_type *usb_types,
-					  ssize_t num_usb_types,
-					  union power_supply_propval *value,
-					  char *buf)
-{
-	enum power_supply_usb_type usb_type;
-	ssize_t count = 0;
-	bool match = false;
-	int i;
-
-	for (i = 0; i < num_usb_types; ++i) {
-		usb_type = usb_types[i];
-
-		if (value->intval == usb_type) {
-			count += sprintf(buf + count, "[%s] ",
-					 power_supply_usb_type_text[usb_type]);
-			match = true;
-		} else {
-			count += sprintf(buf + count, "%s ",
-					 power_supply_usb_type_text[usb_type]);
-		}
-	}
-
-	if (!match) {
-		dev_warn(dev, "driver reporting unsupported connected type\n");
-		return -EINVAL;
-	}
-
-	if (count)
-		buf[count - 1] = '\n';
-
-	return count;
-}
-
 static ssize_t power_supply_show_property(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf) {
-	ssize_t ret;
+	ssize_t ret = 0;
 	struct power_supply *psy = dev_get_drvdata(dev);
-	enum power_supply_property psp = attr - power_supply_attrs;
+	const ptrdiff_t off = attr - power_supply_attrs;
 	union power_supply_propval value;
 
-	if (psp == POWER_SUPPLY_PROP_TYPE) {
+	if (off == POWER_SUPPLY_PROP_TYPE) {
 		value.intval = psy->desc->type;
 	} else {
-		ret = power_supply_get_property(psy, psp, &value);
+		ret = power_supply_get_property(psy, off, &value);
 
 		if (ret < 0) {
 			if (ret == -ENODATA)
@@ -158,93 +121,72 @@ static ssize_t power_supply_show_property(struct device *dev,
 		}
 	}
 
-	switch (psp) {
-	case POWER_SUPPLY_PROP_STATUS:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_status_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_TYPE:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_charge_type_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_HEALTH:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_health_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_technology_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_capacity_level_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_TYPE:
-	case POWER_SUPPLY_PROP_REAL_TYPE:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_type_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_USB_TYPE:
-		ret = power_supply_show_usb_type(dev, psy->desc->usb_types,
-						 psy->desc->num_usb_types,
-						 &value, buf);
-		break;
-	case POWER_SUPPLY_PROP_SCOPE:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_scope_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_TYPEC_MODE:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_usbc_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_TYPEC_POWER_ROLE:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_usbc_pr_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_TYPEC_SRC_RP:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_typec_src_rp_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_DIE_HEALTH:
-	case POWER_SUPPLY_PROP_SKIN_HEALTH:
-	case POWER_SUPPLY_PROP_CONNECTOR_HEALTH:
-		ret = sprintf(buf, "%s\n",
-			      power_supply_health_text[value.intval]);
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT:
-		ret = sprintf(buf, "%lld\n", value.int64val);
-		break;
-	case POWER_SUPPLY_PROP_TYPE_RECHECK:
-		ret = scnprintf(buf, PAGE_SIZE, "0x%x\n", value.intval);
-		break;
+	if (off == POWER_SUPPLY_PROP_STATUS)
+		return sprintf(buf, "%s\n",
+			       power_supply_status_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_CHARGE_TYPE)
+		return sprintf(buf, "%s\n",
+			       power_supply_charge_type_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_HEALTH)
+		return sprintf(buf, "%s\n",
+			       power_supply_health_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_TECHNOLOGY)
+		return sprintf(buf, "%s\n",
+			       power_supply_technology_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_CAPACITY_LEVEL)
+		return sprintf(buf, "%s\n",
+			       power_supply_capacity_level_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_TYPE ||
+			off == POWER_SUPPLY_PROP_REAL_TYPE)
+		return sprintf(buf, "%s\n",
+			       power_supply_type_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_SCOPE)
+		return sprintf(buf, "%s\n",
+			       power_supply_scope_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_TYPEC_MODE)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_usbc_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_TYPEC_POWER_ROLE)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_usbc_pr_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_TYPEC_SRC_RP)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_typec_src_rp_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_DIE_HEALTH)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_health_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_CONNECTOR_HEALTH)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_health_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_SKIN_HEALTH)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			       power_supply_health_text[value.intval]);
+	else if (off >= POWER_SUPPLY_PROP_MODEL_NAME)
+		return sprintf(buf, "%s\n", value.strval);
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
-	case POWER_SUPPLY_PROP_ROMID:
-	case POWER_SUPPLY_PROP_DS_STATUS:
-		ret = scnprintf(buf, PAGE_SIZE, "%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
+	else if ((off == POWER_SUPPLY_PROP_ROMID) || (off == POWER_SUPPLY_PROP_DS_STATUS))
+		return scnprintf(buf, PAGE_SIZE, "%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
 			value.arrayval[0], value.arrayval[1], value.arrayval[2], value.arrayval[3],
 			value.arrayval[4], value.arrayval[5], value.arrayval[6], value.arrayval[7]);
-		break;
-	case POWER_SUPPLY_PROP_PAGE0_DATA:
-	case POWER_SUPPLY_PROP_PAGE1_DATA:
-	case POWER_SUPPLY_PROP_PAGEDATA:
-		ret = scnprintf(buf, PAGE_SIZE, "%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
+	else if ((off == POWER_SUPPLY_PROP_PAGE0_DATA) ||
+			(off == POWER_SUPPLY_PROP_PAGE1_DATA) ||
+			(off == POWER_SUPPLY_PROP_PAGEDATA))
+		return scnprintf(buf, PAGE_SIZE, "%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
 			value.arrayval[0], value.arrayval[1], value.arrayval[2], value.arrayval[3],
 			value.arrayval[4], value.arrayval[5], value.arrayval[6], value.arrayval[7],
 			value.arrayval[8], value.arrayval[9], value.arrayval[10], value.arrayval[11],
 			value.arrayval[12], value.arrayval[13], value.arrayval[14], value.arrayval[15]);
-		break;
-	case POWER_SUPPLY_PROP_VERIFY_MODEL_NAME:
-		ret = sprintf(buf, "%s\n", value.strval);
-		break;
+	else if (off == POWER_SUPPLY_PROP_VERIFY_MODEL_NAME)
+		return sprintf(buf, "%s\n", value.strval);
 #endif
-	case POWER_SUPPLY_PROP_MODEL_NAME ... POWER_SUPPLY_PROP_SERIAL_NUMBER:
-		ret = sprintf(buf, "%s\n", value.strval);
-		break;
-	default:
-		ret = sprintf(buf, "%d\n", value.intval);
-	}
 
-	return ret;
+	if (off == POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT)
+		return sprintf(buf, "%lld\n", value.int64val);
+	else if (off == POWER_SUPPLY_PROP_TYPE_RECHECK)
+		return scnprintf(buf, PAGE_SIZE, "0x%x\n",
+				value.intval);
+	else
+		return sprintf(buf, "%d\n", value.intval);
 }
 
 static ssize_t power_supply_store_property(struct device *dev,
@@ -252,10 +194,11 @@ static ssize_t power_supply_store_property(struct device *dev,
 					   const char *buf, size_t count) {
 	ssize_t ret;
 	struct power_supply *psy = dev_get_drvdata(dev);
-	enum power_supply_property psp = attr - power_supply_attrs;
+	const ptrdiff_t off = attr - power_supply_attrs;
 	union power_supply_propval value;
 
-	switch (psp) {
+	/* maybe it is a enum property? */
+	switch (off) {
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = sysfs_match_string(power_supply_status_text, buf);
 		break;
@@ -294,7 +237,7 @@ static ssize_t power_supply_store_property(struct device *dev,
 
 	value.intval = ret;
 
-	ret = power_supply_set_property(psy, psp, &value);
+	ret = power_supply_set_property(psy, off, &value);
 	if (ret < 0)
 		return ret;
 
@@ -353,6 +296,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(soc_decimal),
 	POWER_SUPPLY_ATTR(soc_decimal_rate),
 	POWER_SUPPLY_ATTR(shutdown_delay),
+	POWER_SUPPLY_ATTR(shutdown_delay_en),
 	POWER_SUPPLY_ATTR(temp),
 	POWER_SUPPLY_ATTR(temp_max),
 	POWER_SUPPLY_ATTR(temp_min),
@@ -366,7 +310,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(time_to_full_now),
 	POWER_SUPPLY_ATTR(time_to_full_avg),
 	POWER_SUPPLY_ATTR(type),
-	POWER_SUPPLY_ATTR(usb_type),
 	POWER_SUPPLY_ATTR(scope),
 	POWER_SUPPLY_ATTR(precharge_current),
 	POWER_SUPPLY_ATTR(charge_term_current),
@@ -377,8 +320,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_enabled),
 	POWER_SUPPLY_ATTR(set_ship_mode),
 	POWER_SUPPLY_ATTR(real_type),
-	POWER_SUPPLY_ATTR(quick_charge_type),
 	POWER_SUPPLY_ATTR(hvdcp3_type),
+	POWER_SUPPLY_ATTR(fake_hvdcp3),
+	POWER_SUPPLY_ATTR(quick_charge_type),
 	POWER_SUPPLY_ATTR(charge_now_raw),
 	POWER_SUPPLY_ATTR(charge_now_error),
 	POWER_SUPPLY_ATTR(capacity_raw),
@@ -417,6 +361,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(flash_trigger),
 	POWER_SUPPLY_ATTR(force_tlim),
 	POWER_SUPPLY_ATTR(dp_dm),
+	POWER_SUPPLY_ATTR(dp_dm_bq),
 	POWER_SUPPLY_ATTR(input_current_limited),
 	POWER_SUPPLY_ATTR(input_current_now),
 	POWER_SUPPLY_ATTR(charge_qnovo_enable),
@@ -433,8 +378,11 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(typec_src_rp),
 	POWER_SUPPLY_ATTR(pd_allowed),
 	POWER_SUPPLY_ATTR(pd_active),
+	POWER_SUPPLY_ATTR(pd_authentication),
+	POWER_SUPPLY_ATTR(pd_remove_compensation),
 	POWER_SUPPLY_ATTR(pd_in_hard_reset),
 	POWER_SUPPLY_ATTR(pd_current_max),
+	POWER_SUPPLY_ATTR(apdo_max),
 	POWER_SUPPLY_ATTR(pd_usb_suspend_supported),
 	POWER_SUPPLY_ATTR(charger_temp),
 	POWER_SUPPLY_ATTR(charger_temp_max),
@@ -459,7 +407,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(pd_voltage_max),
 	POWER_SUPPLY_ATTR(pd_voltage_min),
 	POWER_SUPPLY_ATTR(sdp_current_max),
-	POWER_SUPPLY_ATTR(fg_reset_clock),
 	POWER_SUPPLY_ATTR(connector_type),
 	POWER_SUPPLY_ATTR(parallel_batfet_mode),
 	POWER_SUPPLY_ATTR(parallel_fcc_max),
@@ -467,15 +414,12 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(moisture_detected),
 	POWER_SUPPLY_ATTR(batt_profile_version),
 	POWER_SUPPLY_ATTR(batt_full_current),
-#ifdef CONFIG_BQ2597X_CHARGE_PUMP
 	POWER_SUPPLY_ATTR(battery_charging_limited),
-	POWER_SUPPLY_ATTR(warm_fake_charging),
-	POWER_SUPPLY_ATTR(main_fcc_limit),
+	POWER_SUPPLY_ATTR(slowly_charging),
 	POWER_SUPPLY_ATTR(bq_input_suspend),
-#endif
-	POWER_SUPPLY_ATTR(usb_is_removing),
 	POWER_SUPPLY_ATTR(recharge_soc),
 	POWER_SUPPLY_ATTR(hvdcp_opti_allowed),
+	POWER_SUPPLY_ATTR(fastcharge_mode),
 	POWER_SUPPLY_ATTR(smb_en_mode),
 	POWER_SUPPLY_ATTR(smb_en_reason),
 	POWER_SUPPLY_ATTR(esr_actual),
@@ -485,28 +429,25 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(force_recharge),
 	POWER_SUPPLY_ATTR(fcc_stepper_enable),
 	POWER_SUPPLY_ATTR(toggle_stat),
-	POWER_SUPPLY_ATTR(type_recheck),
 	POWER_SUPPLY_ATTR(main_fcc_max),
 	POWER_SUPPLY_ATTR(fg_reset),
 	POWER_SUPPLY_ATTR(qc_opti_disable),
 	POWER_SUPPLY_ATTR(cc_soc),
 	POWER_SUPPLY_ATTR(batt_age_level),
-	POWER_SUPPLY_ATTR(scale_mode_en),
 	POWER_SUPPLY_ATTR(voltage_vph),
 	POWER_SUPPLY_ATTR(chip_version),
 	POWER_SUPPLY_ATTR(therm_icl_limit),
+	POWER_SUPPLY_ATTR(type_recheck),
 	POWER_SUPPLY_ATTR(dc_reset),
+	POWER_SUPPLY_ATTR(scale_mode_en),
 	POWER_SUPPLY_ATTR(voltage_max_limit),
 	POWER_SUPPLY_ATTR(real_capacity),
+	POWER_SUPPLY_ATTR(esr_sw_control),
 	POWER_SUPPLY_ATTR(force_main_icl),
 	POWER_SUPPLY_ATTR(force_main_fcc),
 	POWER_SUPPLY_ATTR(comp_clamp_level),
 	POWER_SUPPLY_ATTR(adapter_cc_mode),
 	POWER_SUPPLY_ATTR(skin_health),
-	POWER_SUPPLY_ATTR(qc3p5_power_limit),
-	POWER_SUPPLY_ATTR(qc3p5_current_max),
-	POWER_SUPPLY_ATTR(aicl_done),
-	POWER_SUPPLY_ATTR(voltage_step),
 	POWER_SUPPLY_ATTR(apsd_rerun),
 	POWER_SUPPLY_ATTR(apsd_timeout),
 	/* Charge pump properties */
@@ -520,9 +461,27 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(cp_toggle_switcher),
 	POWER_SUPPLY_ATTR(cp_irq_status),
 	POWER_SUPPLY_ATTR(cp_ilim),
+	/* Bq charge pump properties */
+	POWER_SUPPLY_ATTR(ti_battery_present),
+	POWER_SUPPLY_ATTR(ti_vbus_present),
+	POWER_SUPPLY_ATTR(ti_battery_voltage),
+	POWER_SUPPLY_ATTR(ti_battery_current),
+	POWER_SUPPLY_ATTR(ti_battery_temperature),
+	POWER_SUPPLY_ATTR(ti_bus_voltage),
+	POWER_SUPPLY_ATTR(ti_bus_current),
+	POWER_SUPPLY_ATTR(ti_bus_temperature),
+	POWER_SUPPLY_ATTR(ti_die_temperature),
+	POWER_SUPPLY_ATTR(ti_alarm_status),
+	POWER_SUPPLY_ATTR(ti_fault_status),
+	POWER_SUPPLY_ATTR(ti_reg_status),
+	POWER_SUPPLY_ATTR(ti_set_bus_protection_for_qc3),
+	POWER_SUPPLY_ATTR(ti_bus_error_status),
+	POWER_SUPPLY_ATTR(ti_charge_mode),
+	POWER_SUPPLY_ATTR(ti_bypass_mode_enable),
+	POWER_SUPPLY_ATTR(cp_vbat_calibrate),
 	POWER_SUPPLY_ATTR(irq_status),
 	POWER_SUPPLY_ATTR(parallel_output_mode),
-	POWER_SUPPLY_ATTR(cc_toggle_enable),
+	POWER_SUPPLY_ATTR(ffc_chg_term_current),
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
 	/* battery verify properties */
 	POWER_SUPPLY_ATTR(romid),
@@ -539,43 +498,15 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(page1_data),
 	POWER_SUPPLY_ATTR(verify_model_name),
 	POWER_SUPPLY_ATTR(chip_ok),
-	POWER_SUPPLY_ATTR(maxim_batt_cycle_count),
 #endif
-#ifdef CONFIG_BQ2597X_CHARGE_PUMP
-	/* Bq charge pump properties */
-	POWER_SUPPLY_ATTR(ti_battery_present),
-	POWER_SUPPLY_ATTR(ti_vbus_present),
-	POWER_SUPPLY_ATTR(ti_battery_voltage),
-	POWER_SUPPLY_ATTR(ti_battery_current),
-	POWER_SUPPLY_ATTR(ti_battery_temperature),
-	POWER_SUPPLY_ATTR(ti_bus_voltage),
-	POWER_SUPPLY_ATTR(ti_bus_current),
-	POWER_SUPPLY_ATTR(ti_bus_temperature),
-	POWER_SUPPLY_ATTR(ti_die_temperature),
-	POWER_SUPPLY_ATTR(ti_alarm_status),
-	POWER_SUPPLY_ATTR(ti_fault_status),
-	POWER_SUPPLY_ATTR(ti_reg_status),
-	POWER_SUPPLY_ATTR(ti_set_bus_protection_for_qc3),
-	POWER_SUPPLY_ATTR(dp_dm_bq),
-	POWER_SUPPLY_ATTR(termination_current),
-	POWER_SUPPLY_ATTR(ffc_termination_current),
-	POWER_SUPPLY_ATTR(recharge_vbat),
-#endif
-	POWER_SUPPLY_ATTR(pd_authentication),
-	POWER_SUPPLY_ATTR(ffc_chg_term_current),
-	POWER_SUPPLY_ATTR(fastcharge_mode),
-	POWER_SUPPLY_ATTR(fg_type),
-	POWER_SUPPLY_ATTR(charger_status),
-	POWER_SUPPLY_ATTR(moisture_detection_enabled),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),
+	POWER_SUPPLY_ATTR(serial_number),
 	POWER_SUPPLY_ATTR(battery_type),
 	POWER_SUPPLY_ATTR(cycle_counts),
-	POWER_SUPPLY_ATTR(serial_number),
-	POWER_SUPPLY_ATTR(uv_wa),
 };
 
 static struct attribute *
@@ -587,7 +518,7 @@ static umode_t power_supply_attr_is_visible(struct kobject *kobj,
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct power_supply *psy = dev_get_drvdata(dev);
-	umode_t mode = S_IRUSR | S_IRGRP | S_IROTH;
+	umode_t mode = S_IRWXU | S_IRGRP | S_IROTH;
 	int i;
 
 	if (attrno == POWER_SUPPLY_PROP_TYPE)
@@ -628,12 +559,29 @@ void power_supply_init_attrs(struct device_type *dev_type)
 		__power_supply_attrs[i] = &power_supply_attrs[i].attr;
 }
 
+static char *kstruprdup(const char *str, gfp_t gfp)
+{
+	char *ret, *ustr;
+
+	ustr = ret = kmalloc(strlen(str) + 1, gfp);
+
+	if (!ret)
+		return NULL;
+
+	while (*str)
+		*ustr++ = toupper(*str++);
+
+	*ustr = 0;
+
+	return ret;
+}
+
 int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
 	int ret = 0, j;
 	char *prop_buf;
-	char attrname[64];
+	char *attrname;
 
 	if (!psy || !psy->desc) {
 		dev_dbg(dev, "No power supply yet\n");
@@ -650,8 +598,7 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 	for (j = 0; j < psy->desc->num_properties; j++) {
 		struct device_attribute *attr;
-		const char *str;
-		char *line, *ustr;
+		char *line;
 
 		attr = &power_supply_attrs[psy->desc->properties[j]];
 
@@ -670,14 +617,14 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 		if (line)
 			*line = 0;
 
-		str = attr->attr.name;
-		ustr = attrname;
-		while (*str)
-			*ustr++ = toupper(*str++);
-
-		*ustr = 0;
+		attrname = kstruprdup(attr->attr.name, GFP_KERNEL);
+		if (!attrname) {
+			ret = -ENOMEM;
+			goto out;
+		}
 
 		ret = add_uevent_var(env, "POWER_SUPPLY_%s=%s", attrname, prop_buf);
+		kfree(attrname);
 		if (ret)
 			goto out;
 	}
