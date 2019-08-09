@@ -3974,6 +3974,10 @@ static int __init init_f2fs_fs(void)
 	err = f2fs_init_bioset();
 	if (err)
 		goto free_bio_enrty_cache;
+	err = f2fs_init_compress_mempool();
+	if (err)
+		goto free_bioset;
+	f2fs_init_rapid_gc();
 	return 0;
 free_bio_enrty_cache:
 	f2fs_destroy_bio_entry_cache();
@@ -4002,6 +4006,11 @@ fail:
 
 static void __exit exit_f2fs_fs(void)
 {
+<<<<<<< HEAD
+=======
+	f2fs_destroy_rapid_gc();
+	f2fs_destroy_compress_mempool();
+>>>>>>> 68f030fe84f80 (f2fs: catch a global wakelock instead of per gc_kthread)
 	f2fs_destroy_bioset();
 	f2fs_destroy_bio_entry_cache();
 	f2fs_destroy_post_read_processing();
