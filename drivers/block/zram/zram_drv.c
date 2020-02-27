@@ -615,6 +615,7 @@ static int read_from_bdev_async(struct zram *zram, struct bio_vec *bvec,
 #define HUGE_WRITEBACK 1
 #define IDLE_WRITEBACK 2
 
+
 static ssize_t writeback_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
@@ -1831,10 +1832,14 @@ static ssize_t disksize_store(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 	int err;
 
+        #ifndef CONFIG_ZRAM_SIZE_OVERRIDE
 	disksize = memparse(buf, NULL);
 	if (!disksize)
 		return -EINVAL;
-
+        #else
+	disksize = (u64)SZ_1G * CONFIG_ZRAM_SIZE_OVERRIDE;
+	pr_info("Overriding zram size to %li", disksize);
+        #endif
 	down_write(&zram->init_lock);
 	if (init_done(zram)) {
 		pr_info("Cannot change disksize for initialized device\n");

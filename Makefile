@@ -1457,10 +1457,6 @@ kselftest-merge:
 
 ifdef CONFIG_MODULES
 
-# By default, build modules as well
-
-all: modules
-
 # Build modules
 #
 # A module can be listed more than once in obj-m resulting in
@@ -1745,7 +1741,7 @@ else # KBUILD_EXTMOD
 #                      Assumes install directory is already created
 
 # We are always building modules
-KBUILD_MODULES := 1
+KBUILD_MODULES := 0
 
 PHONY += $(objtree)/Module.symvers
 $(objtree)/Module.symvers:
