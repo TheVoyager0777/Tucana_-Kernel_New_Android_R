@@ -3,9 +3,13 @@ ANYKERNEL3_DIR=$PWD/AnyKernel3
 FINAL_KERNEL_ZIP=kernel-tucana-r-VoyagerIII-$(git rev-parse --short=7 HEAD).zip
 IMAGE_GZ=$PWD/out/arch/arm64/boot/Image.gz
 
+export USE_CCACHE=1
+export CCACHE_DIR=/home/user/.ccache
 args="-j$(nproc --all) \
 O=out \
 ARCH=arm64 \
+LLVM=1\
+LLVM_IAS=1\
 CLANG_TRIPLE=/home/user/cer/tc/bin/aarch64-linux-gnu- \
 CROSS_COMPILE=/home/user/cer/tc/bin/aarch64-linux-gnu- \
 CC=/home/user/cer/clang-r433403/bin/clang \
