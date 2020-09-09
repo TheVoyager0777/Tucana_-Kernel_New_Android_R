@@ -1389,7 +1389,7 @@ int ext4_search_dir(struct buffer_head *bh, char *search_buf, int buf_size,
 		if ((char *) de + de->name_len <= dlimit &&
 		    ext4_match(dir, fname, de)) {
 			/* found a match - just to be sure, do
-			 * a full check *
+			 * a full check */
 			if (ext4_check_dir_entry(dir, NULL, de, bh, bh->b_data,
 						 bh->b_size, offset))
 				return -1;
