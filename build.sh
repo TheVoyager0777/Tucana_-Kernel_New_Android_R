@@ -1,26 +1,27 @@
 #!/bin/bash
 ANYKERNEL3_DIR=$PWD/AnyKernel3
-FINAL_KERNEL_ZIP=kernel-tucana-r-VoyagerIII-$(git rev-parse --short=7 HEAD).zip
+FINAL_KERNEL_ZIP=kernel-alpham-r-VoyagerIII-$(git rev-parse --short=7 HEAD).zip
 IMAGE_GZ=$PWD/out/arch/arm64/boot/Image.gz
+ccache_=`which ccache`
+export ARCH=arm64
+export SUBARCH=arm64
+export HEADER_ARCH=arm64
+export CLANG_PATH=/home/user/cer/clang-r433403
 
-export USE_CCACHE=1
-export CCACHE_DIR=/home/user/.ccache
-args="-j$(nproc --all) \
-O=out \
-ARCH=arm64 \
-LLVM=1\
-LLVM_IAS=1\
-CLANG_TRIPLE=/home/user/cer/tc/bin/aarch64-linux-gnu- \
-CROSS_COMPILE=/home/user/cer/tc/bin/aarch64-linux-gnu- \
-CC=/home/user/cer/clang-r433403/bin/clang \
-CROSS_COMPILE_ARM32=/home/user/cer/tc/bin/arm-linux-gnueabi- 
-AR="llvm-ar" \
-NM="llvm-nm" \
-OBJCOPY="llvm-objcopy" \
-OBJDUMP="llvm-objdump" \
-STRIP="llvm-strip" "
-make ${args} tucanas_defconfig
-make ${args}
+export KBUILD_BUILD_HOST="Voayger-sever"
+export KBUILD_BUILD_USER="TheVoyager"
+
+make mrproper O=out || exit 1
+make tucanas_defconfig O=out || exit 1
+
+Start=$(date +"%s")
+
+make -j$(nproc --all) \
+	O=out \
+	CC="${ccache_} ${CLANG_PATH}/bin/clang" \
+	CLANG_TRIPLE=/home/user/fc/aarch64-linux-gnu- \
+	CROSS_COMPILE=/home/user/fc/bin/aarch64-linux-gnu- \
+	CROSS_COMPILE_ARM32=/home/user/fc/bin/arm-linux-gnueabi- 
 
 echo "**** Verify target files ****"
 if [ ! -f "$IMAGE_GZ" ]; then
@@ -40,5 +41,9 @@ cd ..
 rm $ANYKERNEL3_DIR/Image.gz
 
 mv -f $ANYKERNEL3_DIR/$FINAL_KERNEL_ZIP out/
+
+exit_code=$?
+End=$(date +"%s")
+Diff=$(($End - $Start))
 
 echo "Check out/$FINAL_KERNEL_ZIP"
