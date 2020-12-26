@@ -759,6 +759,7 @@ static int parse_options(struct super_block *sb, char *options)
 			kvfree(name);
 			break;
 		case Opt_fsync:
+                        f2fs_info(sbi, "changing fsync mode not supported");
 			name = match_strdup(&args[0]);
 			if (!name)
 				return -ENOMEM;
@@ -1614,8 +1615,12 @@ static void default_options(struct f2fs_sb_info *sbi)
 	F2FS_OPTION(sbi).inline_xattr_size = DEFAULT_INLINE_XATTR_ADDRS;
 	F2FS_OPTION(sbi).whint_mode = WHINT_MODE_OFF;
 	F2FS_OPTION(sbi).alloc_mode = ALLOC_MODE_DEFAULT;
+<<<<<<< HEAD
 	F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_POSIX;
 	F2FS_OPTION(sbi).test_dummy_encryption = false;
+=======
+	F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_STRICT;
+>>>>>>> eb5f8cdaac68e (f2fs: Force strict fsync mode)
 #ifdef CONFIG_FS_ENCRYPTION
 	F2FS_OPTION(sbi).inlinecrypt = false;
 #endif
