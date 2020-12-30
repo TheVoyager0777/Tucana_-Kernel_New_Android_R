@@ -2028,7 +2028,7 @@ static int smblib_awake_vote_callback(struct votable *votable, void *data,
 	struct smb_charger *chg = data;
 
 	if (awake)
-		pm_wakeup_event(chg->dev, 500);
+		pm_stay_awake(chg->dev);
 	else
 		pm_relax(chg->dev);
 
@@ -2513,7 +2513,7 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 		break;
 	case TERMINATE_CHARGE:
 	case INHIBIT_CHARGE:
-		if ((POWER_SUPPLY_HEALTH_WARM == pval.intval || ((batt_capa.intval <= 99) && usb_online))
+		if (POWER_SUPPLY_HEALTH_WARM == pval.intval || batt_capa.intval <= 98
 			|| POWER_SUPPLY_HEALTH_OVERHEAT == pval.intval)
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 		else
@@ -7175,9 +7175,6 @@ int smblib_get_quick_charge_type(struct smb_charger *chg)
 			|| (pval.intval == POWER_SUPPLY_HEALTH_OVERHEAT))
 		return 0;
 
-	pr_info("real_charger_type:%d pd_verified:%d, qc_class_ab:%d\n",
-		chg->real_charger_type, chg->pd_verifed, chg->qc_class_ab);
-
 	/* davinic do not need to report this type */
 	if ((chg->real_charger_type == POWER_SUPPLY_TYPE_USB_PD)
 				&& chg->pd_verifed && chg->qc_class_ab) {
@@ -9201,7 +9198,6 @@ static void apsd_timer_cb(unsigned long data)
 	chg->apsd_ext_timeout = true;
 }
 
-#define SOFT_JEITA_HYSTERESIS_OFFSET	0x200
 static void jeita_update_work(struct work_struct *work)
 {
 	struct smb_charger *chg = container_of(work, struct smb_charger,
@@ -9211,8 +9207,6 @@ static void jeita_update_work(struct work_struct *work)
 	union power_supply_propval val;
 	int rc, tmp[2], max_fcc_ma, max_fv_uv;
 	u32 jeita_hard_thresholds[2];
-	u16 addr;
-	u8 buff[2];
 
 	batt_node = of_find_node_by_name(node, "qcom,battery-data");
 	if (!batt_node) {
@@ -9275,34 +9269,6 @@ static void jeita_update_work(struct work_struct *work)
 					rc);
 			goto out;
 		}
-	} else {
-		/* Populate the jeita-soft-thresholds */
-		addr = CHGR_JEITA_THRESHOLD_BASE_REG(JEITA_SOFT);
-		rc = smblib_batch_read(chg, addr, buff, 2);
-		if (rc < 0) {
-			pr_err("failed to read 0x%4X, rc=%d\n", addr, rc);
-			goto out;
-		}
-
-		chg->jeita_soft_thlds[1] = buff[1] | buff[0] << 8;
-
-		rc = smblib_batch_read(chg, addr + 2, buff, 2);
-		if (rc < 0) {
-			pr_err("failed to read 0x%4X, rc=%d\n", addr + 2, rc);
-			goto out;
-		}
-
-		chg->jeita_soft_thlds[0] = buff[1] | buff[0] << 8;
-
-		/*
-		 * Update the soft jeita hysteresis 2 DegC less for warm and
-		 * 2 DegC more for cool than the soft jeita thresholds to avoid
-		 * overwriting the registers with invalid values.
-		 */
-		chg->jeita_soft_hys_thlds[0] =
-			chg->jeita_soft_thlds[0] - SOFT_JEITA_HYSTERESIS_OFFSET;
-		chg->jeita_soft_hys_thlds[1] =
-			chg->jeita_soft_thlds[1] + SOFT_JEITA_HYSTERESIS_OFFSET;
 	}
 
 	/* we still use old soft jeita method */
