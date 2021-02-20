@@ -7,8 +7,10 @@ gre='\e[0;32m'
 
 ANYKERNEL3_DIR=$PWD/AnyKernel3
 FINAL_KERNEL_ZIP=kernel-Tucana-r-VoyagerIII-$(git rev-parse --short=7 HEAD).zip
-IMAGE_GZ=$PWD/out/arch/arm64/boot/Image.gz
+IMAGE_GZ=$PWD/out/arch/arm64/boot/Image.gz-dtb
+DTBO_IMG=$PWD/out/arch/arm64/boot/dtbo.img
 ccache_=`which ccache`
+
 export ARCH=arm64
 export SUBARCH=arm64
 export HEADER_ARCH=arm64
@@ -41,7 +43,8 @@ if [ ! -f "$IMAGE_GZ" ]; then
 fi
 
 echo "**** Moving target files ****"
-mv $IMAGE_GZ $ANYKERNEL3_DIR/Image.gz
+mv -f $IMAGE_GZ $ANYKERNEL3_DIR/Image.gz-dtb
+mv -f $DTBO_IMG $ANYKERNEL3_DIR/dtbo.img
 
 echo "**** Time to zip up! ****"
 cd $ANYKERNEL3_DIR/
@@ -49,7 +52,8 @@ zip -r9 $FINAL_KERNEL_ZIP * -x .git README.md *placeholder
 
 echo "**** Removing leftovers ****"
 cd ..
-rm $ANYKERNEL3_DIR/Image.gz
+rm $ANYKERNEL3_DIR/Image.gz-dtb
+rm $ANYKERNEL3_DIR/dtbo.img
 
 mv -f $ANYKERNEL3_DIR/$FINAL_KERNEL_ZIP out/
 echo -e "$gre << Build completed in $(($Diff / 60)) minutes and $(($Diff % 60)) seconds >> \n $white"
