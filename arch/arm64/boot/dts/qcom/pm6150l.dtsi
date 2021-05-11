@@ -144,6 +144,15 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		pm6150l_pwm: qcom,pwms@bc00 {
+			compatible = "qcom,pwm-lpg";
+			reg = <0xbc00 0x200>;
+			reg-names = "lpg-base";
+			#pwm-cells = <2>;
+			qcom,num-lpg-channels = <2>;
+			status = "disabled";
+		};
+
 		pm6150l_lcdb: qcom,lcdb@ec00 {
 			compatible = "qcom,qpnp-lcdb-regulator";
 			#address-cells = <1>;
@@ -295,7 +304,6 @@
 				qcom,default-led-trigger = "switch2_trigger";
 			};
 
-			/* Added by qudao1@xiaomi.com */
 			pm6150l_flashlight: qcom,flashlight {
 				label = "flash";
 				qcom,led-name = "flashlight";
@@ -308,7 +316,6 @@
 				qcom,hdrm-voltage-mv = <325>;
 				qcom,hdrm-vol-hi-lo-win-mv = <100>;
 			};
-			/* End of Added by qudao1@xiaomi.com */
 		};
 
 		pm6150l_wled: qcom,wled@d800 {
@@ -383,17 +390,6 @@
 				qcom,ramp-pattern-repeat;
 			};
 		};
-
-		/* Added by qudao1@xiaomi.com */
-		pm6150l_pwm: qcom,pwms@bc00 {
-			compatible = "qcom,pwm-lpg";
-			reg = <0xbc00 0x200>;
-			reg-names = "lpg-base";
-			#pwm-cells = <2>;
-			qcom,num-lpg-channels = <2>;
-			status = "disabled";
-		};
-		/* End of Added by qudao1@xiaomi.com */
 
 		pm6150l_rgb_led: qcom,leds@d000 {
 			compatible = "qcom,tri-led";
