@@ -1,4 +1,6 @@
-/* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -399,6 +401,7 @@ struct usbpd {
 	struct workqueue_struct	*wq;
 	struct work_struct	sm_work;
 	struct work_struct	start_periph_work;
+	struct delayed_work	src_check_work;
 	struct work_struct	restart_host_work;
 	struct hrtimer		timer;
 	bool			sm_queued;
@@ -427,7 +430,6 @@ struct usbpd {
 	bool			peer_usb_comm;
 	bool			peer_pr_swap;
 	bool			peer_dr_swap;
-	bool			no_usb3dp_concurrency;
 
 	u32			sink_caps[7];
 	int			num_sink_caps;
@@ -620,77 +622,6 @@ static void start_usb_peripheral_work(struct work_struct *w)
 	pd->current_dr = DR_UFP;
 	start_usb_peripheral(pd);
 	dual_role_instance_changed(pd->dual_role);
-}
-
-static void restart_usb_host_work(struct work_struct *w)
-{
-	struct usbpd *pd = container_of(w, struct usbpd, restart_host_work);
-	int ret;
-
-	if (!pd->no_usb3dp_concurrency)
-		return;
-
-	stop_usb_host(pd);
-
-	/* blocks until USB host is completely stopped */
-	ret = extcon_blocking_sync(pd->extcon, EXTCON_USB_HOST, 0);
-	if (ret) {
-		usbpd_err(&pd->dev, "err(%d) stopping host", ret);
-		return;
-	}
-
-	start_usb_host(pd, false);
-}
-
-static void send_sink_soc_func(struct work_struct *w)
-{
-	struct usbpd *pd = container_of(w, struct usbpd, send_sink_soc_work.work);
-	union power_supply_propval val = {0};
-	int ret = 0;
-
-	if (!pd->bat_psy)
-		return;
-
-	if (pd->dual_role->reverse_flag) {
-		pr_info("reverse charge done, don't send sink_soc");
-		return;
-	}
-
-	ret = power_supply_get_property(pd->bat_psy, POWER_SUPPLY_PROP_CAPACITY, &val);
-	if (ret)
-		return;
-	else
-		pd->sink_soc = val.intval;
-
-	if (pd->sink_soc >= 1 && pd->sink_soc <=100)
-		usbpd_request_vdm_cmd(pd, USBPD_UVDM_SINK_CAPACITY, &pd->sink_soc);
-}
-
-static void swap_interchg_func(struct work_struct *w)
-{
-	struct usbpd *pd = container_of(w, struct usbpd, swap_interchg_work.work);
-	union power_supply_propval val = {0};
-	unsigned int power_role = DUAL_ROLE_PROP_PR_SNK, data_role = DUAL_ROLE_PROP_DR_DEVICE;
-	int ret = 0;
-
-	if (!pd->bat_psy)
-		return;
-
-	if (pd->dual_role->reverse_flag) {
-		pr_info("reverse charge done, don't swap interchg");
-		return;
-	}
-
-	ret = power_supply_get_property(pd->bat_psy, POWER_SUPPLY_PROP_CAPACITY, &val);
-	if (ret)
-		return;
-	else
-		pd->source_soc = val.intval;
-
-	if (pd->source_soc < pd->sink_soc) {
-		pd->dual_role->desc->set_property(pd->dual_role, DUAL_ROLE_PROP_PR, &power_role);
-		pd->dual_role->desc->set_property(pd->dual_role, DUAL_ROLE_PROP_DR, &data_role);
-	}
 }
 
 /**
@@ -1856,6 +1787,9 @@ static void usbpd_set_state(struct usbpd *pd, enum usbpd_state next_state)
 			break;
 		}
 
+		/* Set to USB and DP cocurrency mode */
+		extcon_blocking_sync(pd->extcon, EXTCON_DISP_DP, 2);
+		
 		/* wait for ACCEPT */
 		kick_sm(pd, SENDER_RESPONSE_TIME);
 		break;
@@ -5344,6 +5278,7 @@ struct usbpd *usbpd_create(struct device *parent)
 	}
 	INIT_WORK(&pd->sm_work, usbpd_sm);
 	INIT_WORK(&pd->start_periph_work, start_usb_peripheral_work);
+        INIT_DELAYED_WORK(&pd->src_check_work, source_check_workfunc);
 	INIT_WORK(&pd->restart_host_work, restart_usb_host_work);
 	INIT_DELAYED_WORK(&pd->send_sink_soc_work, send_sink_soc_func);
 	INIT_DELAYED_WORK(&pd->swap_interchg_work, swap_interchg_func);
@@ -5416,8 +5351,9 @@ struct usbpd *usbpd_create(struct device *parent)
 
 	pd->enable_smart_interchg = of_property_read_bool(parent->of_node, "mi,smart-interchg-enable");
 
-	ret = of_property_read_u32(parent->of_node, "mi,pd_curr_limit",
-			&pd->limit_curr);
+	ret = of_property_read_u32(parent->of_node, "mi,limit_pd_vbus",
+			&pd->limit_pd_vbus);
+
 	if (ret) {
 		usbpd_err(&pd->dev, "do not limit current\n");
 		pd->limit_curr = false;
