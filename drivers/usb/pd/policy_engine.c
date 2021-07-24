@@ -428,7 +428,6 @@ struct usbpd {
 	bool			peer_pr_swap;
 	bool			peer_dr_swap;
 	bool			no_usb3dp_concurrency;
-	bool			pd20_source_only;
 
 	u32			sink_caps[7];
 	int			num_sink_caps;
@@ -2372,6 +2371,13 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 		}
 		break;
 
+	if (!pd->in_pr_swap) {
+		/*
+		 * support up to PD 3.0; if peer is 2.0
+		 * phy_msg_received() will handle the downgrade.
+		 */
+		pd->spec_rev = USBPD_REV_30;
+		
 	case SVDM_CMD_TYPE_RESP_NAK:
 		usbpd_info(&pd->dev, "VDM NAK received for SVID:0x%04x command:0x%x\n",
 				svid, cmd);
@@ -2476,6 +2482,24 @@ static void handle_vdm_tx(struct usbpd *pd, enum pd_sop_type sop_type)
 
 static void handle_get_src_cap_extended(struct usbpd *pd)
 {
+	int ms;
+
+	if (IS_DATA(rx_msg, MSG_VDM))
+		handle_vdm_rx(pd, rx_msg);
+
+	/* tVCONNStable (50ms) elapsed */
+	ms = FIRST_SOURCE_CAP_TIME - 50;
+
+	/* if no vdm msg received SENDER_RESPONSE_TIME elapsed */
+	if (!rx_msg)
+		ms -= SENDER_RESPONSE_TIME;
+
+	/*
+	 * Emarker may have negotiated down to rev 2.0.
+	 * Reset to 3.0 to begin SOP communication with sink
+	 */
+	pd->spec_rev = USBPD_REV_30;
+	
 	int ret;
 	struct {
 		u16 vid;
