@@ -54,9 +54,6 @@ void cpuidle_clear_idle_cpu(unsigned int cpu)
 	atomic_andnot(BIT(cpu), &idled);
 }
 #endif
-static void cpuidle_set_idle_cpu(unsigned int cpu);
-static void cpuidle_clear_idle_cpu(unsigned int cpu);
-
 int cpuidle_disabled(void)
 {
 	return off;
@@ -669,16 +666,6 @@ static atomic_t idle_cpu_mask = ATOMIC_INIT(0);
 #if NR_CPUS > 32
 #error idle_cpu_mask not big enough for NR_CPUS
 #endif
-
-static void cpuidle_set_idle_cpu(unsigned int cpu)
-{
-	atomic_or(BIT(cpu), &idle_cpu_mask);
-}
-
-static void cpuidle_clear_idle_cpu(unsigned int cpu)
-{
-	atomic_andnot(BIT(cpu), &idle_cpu_mask);
-}
 
 /*
  * This function gets called when a part of the kernel has a new latency
