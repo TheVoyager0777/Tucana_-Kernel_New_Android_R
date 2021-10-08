@@ -1488,6 +1488,8 @@ endif
 
 source "lib/Kconfig"
 
+source "techpack/Kconfig"
+
 config HWCONF_MANAGER
        bool "Hardware configuration and monitor information"
        default y
@@ -1502,3 +1504,4 @@ config FACTORY_BUILD
 	help
 	  This macro will be defined when build factory version. It is used to
 	  distinguish factory and dev codes in kernel.
+

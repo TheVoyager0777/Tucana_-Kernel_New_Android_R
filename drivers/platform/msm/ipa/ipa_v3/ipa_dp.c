@@ -18,6 +18,7 @@
 #include <linux/msm_gsi.h>
 #include <net/sock.h>
 #include "ipa_i.h"
+#include "../ipa_rm_i.h"
 #include "ipa_trace.h"
 #include "ipahal/ipahal.h"
 #include "ipahal/ipahal_fltrt.h"
@@ -4636,7 +4637,7 @@ static int ipa_gsi_setup_transfer_ring(struct ipa3_ep_context *ep,
 	u32 ring_size, struct ipa3_sys_context *user_data, gfp_t mem_flag)
 {
 	dma_addr_t dma_addr;
-	union __packed gsi_channel_scratch ch_scratch;
+	union gsi_channel_scratch ch_scratch;
 	struct gsi_chan_props gsi_channel_props;
 	const struct ipa_gsi_ep_config *gsi_ep_info;
 	int result;
