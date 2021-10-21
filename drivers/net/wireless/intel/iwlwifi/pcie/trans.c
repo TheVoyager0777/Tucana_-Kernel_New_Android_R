@@ -1927,7 +1927,7 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 				   void *buf, int dwords)
 {
 	unsigned long flags;
-	int offs = 0;
+	int offs, ret = 0;
 	u32 *vals = buf;
 
 	while (offs < dwords) {
@@ -1957,8 +1957,7 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 			return -EBUSY;
 		}
 	}
-
-	return 0;
+	return ret;
 }
 
 static int iwl_trans_pcie_write_mem(struct iwl_trans *trans, u32 addr,

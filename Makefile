@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 4
 PATCHLEVEL = 14
+<<<<<<< HEAD
 SUBLEVEL = 252
+=======
+SUBLEVEL = 212
+>>>>>>> parent of 89616f108fbcb (Merge 4.14.213 into android-4.14-stable)
 EXTRAVERSION =
 NAME = Petit Gorille
 

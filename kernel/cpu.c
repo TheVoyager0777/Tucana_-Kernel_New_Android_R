@@ -822,10 +822,6 @@ static void cpu_up_down_serialize_trainwrecks(bool tasks_frozen)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-#ifndef arch_clear_mm_cpumask_cpu
-#define arch_clear_mm_cpumask_cpu(cpu, mm) cpumask_clear_cpu(cpu, mm_cpumask(mm))
-#endif
-
 /**
  * clear_tasks_mm_cpumask - Safely clear tasks' mm_cpumask for a CPU
  * @cpu: a CPU id
@@ -861,7 +857,7 @@ void clear_tasks_mm_cpumask(int cpu)
 		t = find_lock_task_mm(p);
 		if (!t)
 			continue;
-		arch_clear_mm_cpumask_cpu(cpu, t->mm);
+		cpumask_clear_cpu(cpu, mm_cpumask(t->mm));
 		task_unlock(t);
 	}
 	rcu_read_unlock();
