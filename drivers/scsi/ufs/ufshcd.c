@@ -4,7 +4,7 @@
  * This code is based on drivers/scsi/ufs/ufshcd.c
  * Copyright (C) 2011-2013 Samsung India Software Operations
  * Copyright (C) 2021 XiaoMi, Inc.
- * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
  *
  * Authors:
  *	Santosh Yaraganavi <santosh.sy@samsung.com>
@@ -1950,7 +1950,6 @@ static int ufshcd_devfreq_target(struct device *dev,
 
 	start = ktime_get();
 	ret = ufshcd_devfreq_scale(hba, scale_up);
-
 	trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
 		(scale_up ? "up" : "down"),
 		ktime_to_us(ktime_sub(ktime_get(), start)), ret);
@@ -3812,7 +3811,6 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	err = ufshcd_prepare_lrbp_crypto(hba, cmd, lrbp);
 	if (err) {
-		ufshcd_release(hba, false);
 		lrbp->cmd = NULL;
 		clear_bit_unlock(tag, &hba->lrb_in_use);
 		goto out;
@@ -3835,7 +3833,6 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	err = ufshcd_map_sg(hba, lrbp);
 	if (err) {
-		ufshcd_release(hba, false);
 		lrbp->cmd = NULL;
 		clear_bit_unlock(tag, &hba->lrb_in_use);
 		ufshcd_release_all(hba);
@@ -7650,17 +7647,20 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 {
 	struct Scsi_Host *host;
 	struct ufs_hba *hba;
+	unsigned int tag;
 	u32 pos;
 	int err;
-	u8 resp = 0xF, lun;
+	u8 resp = 0xF;
+	struct ufshcd_lrb *lrbp;
 	unsigned long flags;
 
 	host = cmd->device->host;
 	hba = shost_priv(host);
+	tag = cmd->request->tag;
 
 	ufshcd_print_cmd_log(hba);
-	lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
-	err = ufshcd_issue_tm_cmd(hba, lun, 0, UFS_LOGICAL_RESET, &resp);
+	lrbp = &hba->lrb[tag];
+	err = ufshcd_issue_tm_cmd(hba, lrbp->lun, 0, UFS_LOGICAL_RESET, &resp);
 	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
 		if (!err)
 			err = resp;
@@ -7669,7 +7669,7 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 
 	/* clear the commands that were pending for corresponding LUN */
 	for_each_set_bit(pos, &hba->outstanding_reqs, hba->nutrs) {
-		if (hba->lrb[pos].lun == lun) {
+		if (hba->lrb[pos].lun == lrbp->lun) {
 			err = ufshcd_clear_cmd(hba, pos);
 			if (err)
 				break;
@@ -10180,7 +10180,7 @@ static int ufshcd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 
 	/* UFS device & link must be active before we enter in this function */
 	if (!ufshcd_is_ufs_dev_active(hba) || !ufshcd_is_link_active(hba))
-		goto disable_clks;
+		goto set_vreg_lpm;
 
 	if (ufshcd_is_runtime_pm(pm_op)) {
 		if (ufshcd_can_autobkops_during_suspend(hba)) {
@@ -10216,6 +10216,9 @@ static int ufshcd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	    ufshcd_is_hibern8_on_idle_allowed(hba))
 		hba->hibern8_on_idle.state = HIBERN8_ENTERED;
 
+set_vreg_lpm:
+	if (!hba->auto_bkops_enabled)
+		ufshcd_vreg_set_lpm(hba);
 disable_clks:
 	/*
 	 * Call vendor specific suspend callback. As these callbacks may access
@@ -10225,13 +10228,6 @@ disable_clks:
 	ret = ufshcd_vops_suspend(hba, pm_op);
 	if (ret)
 		goto set_link_active;
-
-	/* reset the connected UFS device during power down */
-	if (ufshcd_is_link_off(hba)) {
-		ret = ufshcd_assert_device_reset(hba);
-		if (ret)
-			goto set_link_active;
-	}
 
 	if (!ufshcd_is_link_active(hba))
 		ret = ufshcd_disable_clocks(hba, false);
@@ -10254,12 +10250,6 @@ disable_clks:
 	 * host controller transaction expected till resume.
 	 */
 	ufshcd_disable_irq(hba);
-
-	if (!hba->auto_bkops_enabled ||
-		!(req_dev_pwr_mode == UFS_ACTIVE_PWR_MODE &&
-		req_link_state == UIC_LINK_ACTIVE_STATE))
-		ufshcd_vreg_set_lpm(hba);
-
 	/* Put the host controller in low power mode if possible */
 	ufshcd_hba_vreg_set_lpm(hba);
 	goto out;
@@ -10272,7 +10262,6 @@ set_link_active:
 		ufshcd_set_link_active(hba);
 	} else if (ufshcd_is_link_off(hba)) {
 		ufshcd_update_error_stats(hba, UFS_ERR_VOPS_SUSPEND);
-		ufshcd_deassert_device_reset(hba);
 		ufshcd_host_reset_and_restore(hba);
 	}
 set_dev_active:
@@ -10315,19 +10304,17 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	old_pwr_mode = hba->curr_dev_pwr_mode;
 
 	ufshcd_hba_vreg_set_hpm(hba);
-
-	ret = ufshcd_vreg_set_hpm(hba);
-	if (ret)
-		goto out;
-
 	/* Make sure clocks are enabled before accessing controller */
 	ret = ufshcd_enable_clocks(hba);
 	if (ret)
-		goto disable_vreg;
+		goto out;
 
 	/* enable the host irq as host controller would be active soon */
 	ufshcd_enable_irq(hba);
 
+	ret = ufshcd_vreg_set_hpm(hba);
+	if (ret)
+		goto disable_irq_and_vops_clks;
 	if (hba->restore) {
 		/* Configure UTRL and UTMRL base address registers */
 		ufshcd_writel(hba, lower_32_bits(hba->utrdl_dma_addr),
@@ -10348,7 +10335,7 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	 */
 	ret = ufshcd_vops_resume(hba, pm_op);
 	if (ret)
-		goto disable_irq_and_vops_clks;
+		goto disable_vreg;
 
 	if (hba->extcon &&
 	    (ufshcd_is_card_offline(hba) ||
@@ -10425,6 +10412,8 @@ set_old_link_state:
 		hba->hibern8_on_idle.state = HIBERN8_ENTERED;
 vendor_suspend:
 	ufshcd_vops_suspend(hba, pm_op);
+disable_vreg:
+	ufshcd_vreg_set_lpm(hba);
 disable_irq_and_vops_clks:
 	ufshcd_disable_irq(hba);
 	if (hba->clk_scaling.is_allowed)
@@ -10432,8 +10421,6 @@ disable_irq_and_vops_clks:
 	ufshcd_disable_clocks(hba, false);
 	if (ufshcd_is_clkgating_allowed(hba))
 		hba->clk_gating.state = CLKS_OFF;
-disable_vreg:
-	ufshcd_vreg_set_lpm(hba);
 out:
 	hba->pm_op_in_progress = 0;
 
@@ -10938,24 +10925,6 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 		goto out;
 
 	pm_runtime_get_sync(hba->dev);
-	ufshcd_hold_all(hba);
-	ufshcd_mark_shutdown_ongoing(hba);
-	ufshcd_shutdown_clkscaling(hba);
-	/**
-	 * (1) Acquire the lock to stop any more requests
-	 * (2) Wait for all issued requests to complete
-	 */
-	ufshcd_get_write_lock(hba);
-	ufshcd_scsi_block_requests(hba);
-	ret = ufshcd_wait_for_doorbell_clr(hba, U64_MAX);
-	if (ret)
-		dev_err(hba->dev, "%s: waiting for DB clear: failed: %d\n",
-			__func__, ret);
-	/* Requests may have errored out above, let it be handled */
-	flush_work(&hba->eh_work);
-	/* reqs issued from contexts other than shutdown will fail from now */
-	ufshcd_scsi_unblock_requests(hba);
-	ufshcd_release_all(hba);
 	ret = ufshcd_suspend(hba, UFS_SHUTDOWN_PM);
 out:
 	if (ret)
