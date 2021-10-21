@@ -207,7 +207,6 @@ unsigned int sysctl_sched_min_task_util_for_boost = 51;
 /* 0.68ms default for 20ms window size scaled to 1024 */
 unsigned int sysctl_sched_min_task_util_for_colocation = 35;
 bool sched_prefer_idle_on_input;
-#endif
 
 static unsigned int __maybe_unused sched_small_task_threshold = 102;
 
