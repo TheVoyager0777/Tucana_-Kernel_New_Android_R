@@ -3701,8 +3701,6 @@ static int fastrpc_internal_control(struct fastrpc_file *fl,
 		VERIFY(err, latency != 0);
 		if (err)
 			goto bail;
-                fl->pm_qos_req.type = PM_QOS_REQ_AFFINE_CORES;
-		cpumask_copy(&fl->pm_qos_req.cpus_affine, cpu_lp_mask);
 		mutex_lock(&fl->pm_qos_mutex);
 		if (!fl->qos_request) {
 			pm_qos_add_request(&fl->pm_qos_req,
