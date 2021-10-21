@@ -1573,6 +1573,7 @@ config MACH_XIAOMI_RAPHAEL
           Support for Xiaomi Redmi K20 Pro.
 
 endmenu
+endmenu
 
 config HWCONF_MANAGER
        bool "Hardware configuration and monitor information"
@@ -1588,3 +1589,4 @@ config FACTORY_BUILD
 	help
 	  This macro will be defined when build factory version. It is used to
 	  distinguish factory and dev codes in kernel.
+	  
