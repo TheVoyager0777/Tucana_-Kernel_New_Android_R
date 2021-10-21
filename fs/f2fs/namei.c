@@ -148,7 +148,8 @@ fail_drop:
 	return ERR_PTR(err);
 }
 
-static inline int is_extension_exist(const unsigned char *s, const char *sub)
+static inline int is_extension_exist(const unsigned char *s, const char *sub,
+						bool tmp_ext)
 {
 	size_t slen = strlen(s);
 	size_t sublen = strlen(sub);
@@ -163,6 +164,13 @@ static inline int is_extension_exist(const unsigned char *s, const char *sub)
 	 */
 	if (slen < sublen + 2)
 		return 0;
+
+	if (!tmp_ext) {
+		/* file has no temp extension */
+		if (s[slen - sublen - 1] != '.')
+			return 0;
+		return !strncasecmp(s + slen - sublen, sub, sublen);
+	}
 
 	for (i = 1; i < slen - sublen; i++) {
 		if (s[i] != '.')
@@ -189,7 +197,7 @@ static inline void set_file_temperature(struct f2fs_sb_info *sbi, struct inode *
 	hot_count = sbi->raw_super->hot_ext_count;
 
 	for (i = 0; i < cold_count + hot_count; i++) {
-		if (is_extension_exist(name, extlist[i]))
+		if (is_extension_exist(name, extlist[i], true))
 			break;
 	}
 
@@ -274,14 +282,16 @@ static void set_compress_inode(struct f2fs_sb_info *sbi, struct inode *inode,
 						const unsigned char *name)
 {
 	__u8 (*extlist)[F2FS_EXTENSION_LEN] = sbi->raw_super->extension_list;
-	unsigned char (*ext)[F2FS_EXTENSION_LEN];
-	unsigned int ext_cnt = F2FS_OPTION(sbi).compress_ext_cnt;
+	unsigned char (*noext)[F2FS_EXTENSION_LEN] = F2FS_OPTION(sbi).noextensions;
+	unsigned char (*ext)[F2FS_EXTENSION_LEN] = F2FS_OPTION(sbi).extensions;
+	unsigned char ext_cnt = F2FS_OPTION(sbi).compress_ext_cnt;
+	unsigned char noext_cnt = F2FS_OPTION(sbi).nocompress_ext_cnt;
 	int i, cold_count, hot_count;
 
 	if (!f2fs_sb_has_compression(sbi) ||
-			is_inode_flag_set(inode, FI_COMPRESSED_FILE) ||
 			F2FS_I(inode)->i_flags & F2FS_NOCOMP_FL ||
-			!f2fs_may_compress(inode))
+			!f2fs_may_compress(inode) ||
+			(!ext_cnt && !noext_cnt))
 		return;
 
 	down_read(&sbi->sb_lock);
@@ -290,7 +300,7 @@ static void set_compress_inode(struct f2fs_sb_info *sbi, struct inode *inode,
 	hot_count = sbi->raw_super->hot_ext_count;
 
 	for (i = cold_count; i < cold_count + hot_count; i++) {
-		if (is_extension_exist(name, extlist[i])) {
+		if (is_extension_exist(name, extlist[i], false)) {
 			up_read(&sbi->sb_lock);
 			return;
 		}
@@ -298,10 +308,18 @@ static void set_compress_inode(struct f2fs_sb_info *sbi, struct inode *inode,
 
 	up_read(&sbi->sb_lock);
 
-	ext = F2FS_OPTION(sbi).extensions;
+	for (i = 0; i < noext_cnt; i++) {
+		if (is_extension_exist(name, noext[i], false)) {
+			f2fs_disable_compressed_file(inode);
+			return;
+		}
+	}
+
+	if (is_inode_flag_set(inode, FI_COMPRESSED_FILE))
+		return;
 
 	for (i = 0; i < ext_cnt; i++) {
-		if (!is_extension_exist(name, ext[i]))
+		if (!is_extension_exist(name, ext[i], false))
 			continue;
 
 		set_compress_context(inode);
@@ -414,6 +432,7 @@ struct dentry *f2fs_get_parent(struct dentry *child)
 	struct qstr dotdot = QSTR_INIT("..", 2);
 	struct page *page;
 	unsigned long ino = f2fs_inode_by_name(d_inode(child), &dotdot, &page);
+
 	if (!ino) {
 		if (IS_ERR(page))
 			return ERR_CAST(page);
@@ -482,7 +501,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	nid_t ino = -1;
 	int err = 0;
 	unsigned int root_ino = F2FS_ROOT_INO(F2FS_I_SB(dir));
-	struct fscrypt_name fname;
+	struct f2fs_filename fname;
 
 	trace_f2fs_lookup_start(dir, dentry, flags);
 
@@ -491,20 +510,21 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		goto out;
 	}
 
-	err = fscrypt_prepare_lookup(dir, dentry, &fname);
-	generic_set_encrypted_ci_d_ops(dir, dentry);
+	err = f2fs_prepare_lookup(dir, dentry, &fname);
+	generic_set_encrypted_ci_d_ops(dentry);
 	if (err == -ENOENT)
 		goto out_splice;
 	if (err)
 		goto out;
 	de = __f2fs_find_entry(dir, &fname, &page);
-	fscrypt_free_filename(&fname);
+	f2fs_free_filename(&fname);
 
 	if (!de) {
 		if (IS_ERR(page)) {
 			err = PTR_ERR(page);
 			goto out;
 		}
+		err = -ENOENT;
 		goto out_splice;
 	}
 
@@ -550,7 +570,7 @@ out_splice:
 #endif
 	new = d_splice_alias(inode, dentry);
 	err = PTR_ERR_OR_ZERO(new);
-	trace_f2fs_lookup_end(dir, dentry, ino, err);
+	trace_f2fs_lookup_end(dir, dentry, ino, !new ? -ENOENT : err);
 	return new;
 out_iput:
 	iput(inode);
@@ -565,19 +585,21 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	struct inode *inode = d_inode(dentry);
 	struct f2fs_dir_entry *de;
 	struct page *page;
-	int err = -ENOENT;
+	int err;
 
 	trace_f2fs_unlink_enter(dir, dentry);
 
-	if (unlikely(f2fs_cp_error(sbi)))
-		return -EIO;
+	if (unlikely(f2fs_cp_error(sbi))) {
+		err = -EIO;
+		goto fail;
+	}
 
 	err = dquot_initialize(dir);
 	if (err)
-		return err;
+		goto fail;
 	err = dquot_initialize(inode);
 	if (err)
-		return err;
+		goto fail;
 
 	de = f2fs_find_entry(dir, &dentry->d_name, &page);
 	if (!de) {
@@ -600,7 +622,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	/* VFS negative dentries are incompatible with Encoding and
 	 * Case-insensitiveness. Eventually we'll want avoid
 	 * invalidating the dentries here, alongside with returning the
-	 * negative dentries at f2fs_lookup(), when it is  better
+	 * negative dentries at f2fs_lookup(), when it is better
 	 * supported by the VFS for the CI case.
 	 */
 	if (IS_CASEFOLDED(dir))
@@ -620,6 +642,7 @@ static const char *f2fs_get_link(struct dentry *dentry,
 				 struct delayed_call *done)
 {
 	const char *link = page_get_link(dentry, inode, done);
+
 	if (!IS_ERR(link) && !*link) {
 		/* this is broken symlink case */
 		do_delayed_call(done);
@@ -705,7 +728,7 @@ out_f2fs_handle_failed_inode:
 	f2fs_handle_failed_inode(inode);
 out_free_encrypted_link:
 	if (disk_link.name != (unsigned char *)symname)
-		kvfree(disk_link.name);
+		kfree(disk_link.name);
 	return err;
 }
 
@@ -757,6 +780,7 @@ out_fail:
 static int f2fs_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = d_inode(dentry);
+
 	if (f2fs_empty_dir(inode))
 		return f2fs_unlink(dir, dentry);
 	return -ENOTEMPTY;
@@ -847,7 +871,11 @@ static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
 
 	if (whiteout) {
 		f2fs_i_links_write(inode, false);
+
+		spin_lock(&inode->i_lock);
 		inode->i_state |= I_LINKABLE;
+		spin_unlock(&inode->i_lock);
+
 		*whiteout = inode;
 	} else {
 		d_tmpfile(dentry, inode);
@@ -1033,7 +1061,11 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		err = f2fs_add_link(old_dentry, whiteout);
 		if (err)
 			goto put_out_dir;
+
+		spin_lock(&whiteout->i_lock);
 		whiteout->i_state &= ~I_LINKABLE;
+		spin_unlock(&whiteout->i_lock);
+
 		iput(whiteout);
 	}
 
@@ -1285,12 +1317,10 @@ static const char *f2fs_encrypted_get_link(struct dentry *dentry,
 }
 
 const struct inode_operations f2fs_encrypted_symlink_inode_operations = {
-	.get_link       = f2fs_encrypted_get_link,
+	.get_link	= f2fs_encrypted_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
-#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
-#endif
 };
 
 const struct inode_operations f2fs_dir_inode_operations = {
@@ -1308,27 +1338,21 @@ const struct inode_operations f2fs_dir_inode_operations = {
 	.setattr	= f2fs_setattr,
 	.get_acl	= f2fs_get_acl,
 	.set_acl	= f2fs_set_acl,
-#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
-#endif
 	.fiemap		= f2fs_fiemap,
 };
 
 const struct inode_operations f2fs_symlink_inode_operations = {
-	.get_link       = f2fs_get_link,
+	.get_link	= f2fs_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
-#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
-#endif
 };
 
 const struct inode_operations f2fs_special_inode_operations = {
 	.getattr	= f2fs_getattr,
-	.setattr        = f2fs_setattr,
+	.setattr	= f2fs_setattr,
 	.get_acl	= f2fs_get_acl,
 	.set_acl	= f2fs_set_acl,
-#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
-#endif
 };

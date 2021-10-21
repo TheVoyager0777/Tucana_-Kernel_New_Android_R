@@ -496,14 +496,16 @@ static void __init report_meminit(void)
 {
 	const char *stack;
 
-	if (IS_ENABLED(CONFIG_INIT_STACK_ALL))
-		stack = "all";
+	if (IS_ENABLED(CONFIG_INIT_STACK_ALL_PATTERN))
+		stack = "all(pattern)";
+	else if (IS_ENABLED(CONFIG_INIT_STACK_ALL_ZERO))
+		stack = "all(zero)";
 	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_BYREF_ALL))
-		stack = "byref_all";
+		stack = "byref_all(zero)";
 	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_BYREF))
-		stack = "byref";
+		stack = "byref(zero)";
 	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_USER))
-		stack = "__user";
+		stack = "__user(zero)";
 	else
 		stack = "off";
 
@@ -733,6 +735,8 @@ asmlinkage __visible void __init start_kernel(void)
 
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
+
+	prevent_tail_call_optimization();
 }
 
 /* Call all constructor functions linked into the kernel. */
@@ -1091,7 +1095,7 @@ static noinline void __init kernel_init_freeable(void)
 	 */
 	set_mems_allowed(node_states[N_MEMORY]);
 
-	cad_pid = task_pid(current);
+	cad_pid = get_pid(task_pid(current));
 
 	smp_prepare_cpus(setup_max_cpus);
 
