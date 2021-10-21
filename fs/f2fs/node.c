@@ -1838,13 +1838,11 @@ static bool flush_dirty_inode(struct page *page)
 	return true;
 }
 
-int f2fs_flush_inline_data(struct f2fs_sb_info *sbi)
+void f2fs_flush_inline_data(struct f2fs_sb_info *sbi)
 {
-
 	pgoff_t index = 0;
 	struct pagevec pvec;
 	int nr_pages;
-	int ret = 0;
 
 	pagevec_init(&pvec, 0);
 
@@ -1872,8 +1870,8 @@ continue_unlock:
 			}
 
 			/* flush inline_data, if it's async context. */
-			if (is_inline_node(page)) {
-				clear_inline_node(page);
+			if (page_private_inline(page)) {
+				clear_page_private_inline(page);
 				unlock_page(page);
 				flush_inline_data(sbi, ino_of_node(page));
 				continue;
@@ -1883,7 +1881,6 @@ continue_unlock:
 		pagevec_release(&pvec);
 		cond_resched();
 	}
-	return ret;
 }
 
 int f2fs_sync_node_pages(struct f2fs_sb_info *sbi,

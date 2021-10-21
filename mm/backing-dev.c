@@ -20,7 +20,6 @@ EXPORT_SYMBOL_GPL(noop_backing_dev_info);
 
 static struct class *bdi_class;
 const char *bdi_unknown_name = "(unknown)";
->>>>>>> 9886c5aeb63186d98c3aad2867934876e3533652
 
 /*
  * bdi_lock protects updates to bdi_list. bdi_list has RCU reader side
