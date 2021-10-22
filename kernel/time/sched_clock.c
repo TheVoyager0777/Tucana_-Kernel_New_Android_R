@@ -280,6 +280,15 @@ int sched_clock_suspend(void)
 	struct clock_read_data *rd = &cd.read_data[0];
 
 	update_sched_clock();
+<<<<<<< HEAD
+
+	suspend_ns = rd->epoch_ns;
+	suspend_cycles = rd->epoch_cyc;
+	pr_info("suspend ns:%17llu	suspend cycles:%17llu\n",
+				rd->epoch_ns, rd->epoch_cyc);
+	printk("wake time is %d\n",abs(suspend_ns-resume_ns)/1000000000);
+=======
+>>>>>>> 9ade2aba43bfe (Revert "time: sched_clock: record cycle count in suspend and resume")
 	hrtimer_cancel(&sched_clock_timer);
 	rd->read_sched_clock = suspended_sched_clock_read;
 
@@ -289,10 +298,18 @@ int sched_clock_suspend(void)
 void sched_clock_resume(void)
 {
 	struct clock_read_data *rd = &cd.read_data[0];
+
+<<<<<<< HEAD
 	update_sched_clock();
 
-	rd->epoch_cyc = cd.actual_read_sched_clock();
+	resume_ns = rd->epoch_ns;
+	//rd->epoch_cyc = cd.actual_read_sched_clock();
+	resume_cycles = rd->epoch_cyc;
+	pr_info("resume cycles:%17llu\n", rd->epoch_cyc);
 
+=======
+	rd->epoch_cyc = cd.actual_read_sched_clock();
+>>>>>>> 9ade2aba43bfe (Revert "time: sched_clock: record cycle count in suspend and resume")
 	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
 	rd->read_sched_clock = cd.actual_read_sched_clock;
 }
