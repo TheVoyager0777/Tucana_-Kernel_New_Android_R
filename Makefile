@@ -375,19 +375,19 @@ HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
 endif
 
 # Make variables (CC, etc...)
-AS		= $(CROSS_COMPILE)as
+AS		= llvm-as-14
 LD		= $(CROSS_COMPILE)ld
 REAL_CC		= $(CROSS_COMPILE)gcc
 LDGOLD		= $(CROSS_COMPILE)ld.gold
-LDLLD		= ld.lld
+LDLLD		= ld.lld-14
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
-NM		= $(CROSS_COMPILE)nm
-LLVMNM		= llvm-nm
-STRIP		= $(CROSS_COMPILE)strip
-OBJCOPY		= $(CROSS_COMPILE)objcopy
-LLVMOBJCOPY	= llvm-objcopy
-OBJDUMP		= $(CROSS_COMPILE)objdump
+NM		= llvm-nm-14
+LLVMNM		= llvm-nm-14
+STRIP		= llvm-strip-14
+OBJCOPY		= llvm-objcopy-14
+LLVMOBJCOPY	= llvm-objcopy-14
+OBJDUMP		= llvm-objdump-14
 AWK		= awk
 GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
