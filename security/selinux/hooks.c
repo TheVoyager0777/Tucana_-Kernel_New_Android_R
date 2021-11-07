@@ -870,6 +870,7 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 	    !strcmp(sb->s_type->name, "tracefs") ||
 	    !strcmp(sb->s_type->name, "sysfs") ||
 	    !strcmp(sb->s_type->name, "pstore") ||
+	    !strcmp(sb->s_type->name, "bpf") ||
 	    !strcmp(sb->s_type->name, "binder") ||
 	    !strcmp(sb->s_type->name, "cgroup") ||
 	    !strcmp(sb->s_type->name, "cgroup2"))
@@ -1546,7 +1547,6 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 	u16 sclass;
 	struct dentry *dentry;
 #define INITCONTEXTLEN 255
-	char context_onstack[INITCONTEXTLEN + 1];
 	char *context = NULL;
 	unsigned len = 0;
 	int rc = 0;
@@ -1606,14 +1606,21 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 			 * inode_doinit with a dentry, before these inodes could
 			 * be used again by userspace.
 			 */
-			goto out;
+			goto out_invalid;
 		}
 
 		len = INITCONTEXTLEN;
-		context = context_onstack;
+		context = kmalloc(len+1, GFP_NOFS);
+		if (!context) {
+			rc = -ENOMEM;
+			dput(dentry);
+			goto out;
+		}
 		context[len] = '\0';
 		rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, context, len);
 		if (rc == -ERANGE) {
+			kfree(context);
+
 			/* Need a larger buffer.  Query for the right size. */
 			rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, NULL, 0);
 			if (rc < 0) {
@@ -1636,8 +1643,7 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 				printk(KERN_WARNING "SELinux: %s:  getxattr returned "
 				       "%d for dev=%s ino=%ld\n", __func__,
 				       -rc, inode->i_sb->s_id, inode->i_ino);
-				if (context != context_onstack)
-					kfree(context);
+				kfree(context);
 				goto out;
 			}
 			/* Map ENODATA to the default file SID */
@@ -1662,15 +1668,13 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 					       "returned %d for dev=%s ino=%ld\n",
 					       __func__, context, -rc, dev, ino);
 				}
-				if (context != context_onstack)
-					kfree(context);
+				kfree(context);
 				/* Leave with the unlabeled SID */
 				rc = 0;
 				break;
 			}
 		}
-		if (context != context_onstack)
-			kfree(context);
+		kfree(context);
 		break;
 	case SECURITY_FS_USE_TASK:
 		sid = task_sid;
@@ -1713,7 +1717,7 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 			 * could be used again by userspace.
 			 */
 			if (!dentry)
-				goto out;
+				goto out_invalid;
 			rc = selinux_genfs_get_sid(dentry, sclass,
 						   sbsec->flags, &sid);
 			dput(dentry);
@@ -1726,11 +1730,10 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 out:
 	spin_lock(&isec->lock);
 	if (isec->initialized == LABEL_PENDING) {
-		if (!sid || rc) {
+		if (rc) {
 			isec->initialized = LABEL_INVALID;
 			goto out_unlock;
 		}
-
 		isec->initialized = LABEL_INITIALIZED;
 		isec->sid = sid;
 	}
@@ -1738,6 +1741,15 @@ out:
 out_unlock:
 	spin_unlock(&isec->lock);
 	return rc;
+
+out_invalid:
+	spin_lock(&isec->lock);
+	if (isec->initialized == LABEL_PENDING) {
+		isec->initialized = LABEL_INVALID;
+		isec->sid = sid;
+	}
+	spin_unlock(&isec->lock);
+	return 0;
 }
 
 /* Convert a Linux signal to an access vector. */
