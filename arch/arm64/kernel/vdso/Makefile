@@ -10,8 +10,9 @@ obj-vdso-s := note.o sigreturn.o
 obj-vdso-c := vgettimeofday.o
 
 # Build rules
-targets := $(obj-vdso) vdso.so vdso.so.dbg
-obj-vdso := $(addprefix $(obj)/, $(obj-vdso))
+targets := $(obj-vdso-s) $(obj-vdso-c) vdso.so vdso.so.dbg
+obj-vdso-s := $(addprefix $(obj)/, $(obj-vdso-s))
+obj-vdso-c := $(addprefix $(obj)/, $(obj-vdso-c))
 obj-vdso   := $(obj-vdso-c) $(obj-vdso-s)
 
 ldflags-y := -shared -nostdlib -soname=linux-vdso.so.1  --hash-style=sysv \
@@ -31,12 +32,6 @@ CFLAGS_REMOVE_vgettimeofday.o += $(CC_FLAGS_SCS)
 
 # Disable gcov profiling for VDSO code
 GCOV_PROFILE := n
-<<<<<<< HEAD
-KASAN_SANITIZE := n
-UBSAN_SANITIZE := n
-KCOV_INSTRUMENT := n
-=======
->>>>>>> 0a97c4e73f736a07dd65c77522d9e39930a949e4
 
 obj-y += vdso.o
 extra-y += vdso.lds
@@ -72,11 +67,9 @@ $(obj-vdso-c): %.o: %.c FORCE
 	$(call if_changed_dep,vdsocc)
 
 # Actual build commands
-<<<<<<< HEAD
 quiet_cmd_vdsocc = VDSOC   $@
       cmd_vdsocc = ${CC} $(c_flags) -c -o $@ $<
-=======
->>>>>>> 0a97c4e73f736a07dd65c77522d9e39930a949e4
+
 quiet_cmd_vdsoas = VDSOA   $@
       cmd_vdsoas = $(CC) $(a_flags) -c -o $@ $<
 
