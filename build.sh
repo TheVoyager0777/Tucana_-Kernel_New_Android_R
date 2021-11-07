@@ -19,7 +19,6 @@ export CLANG_PATH=/home/user/cer/clang-r433403
 export KBUILD_BUILD_HOST="Voayger-sever"
 export KBUILD_BUILD_USER="TheVoyager"
 
-make mrproper O=out || exit 1
 make tucana_user_defconfig O=out || exit 1
 
 Start=$(date +"%s")
